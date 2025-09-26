@@ -49,36 +49,11 @@ if st.button("Calculate Foam Requirements"):
                                           target_density, polyol_weight,
                                           c_pentane_weight, mdi_weight,
                                           polyol_mix_weight)
-    st.header("Results")
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Foam Volume (cm³)", f"{results['volume_cm3']:.2f}")
-    c2.metric("Total Mass (g)", f"{results['total_mass_g']:.2f}")
-    c3.metric("Target Density (kg/m³)", f"{results['target_density']:.2f}")
-
-    st.write("### Material Breakdown")
-    c1, c2, c3 = st.columns(3)
-    c1.success(f"Polyol: {results['required_polyol']:.2f} g")
-    c2.info(f"c-Pentane: {results['required_c_pentane']:.2f} g")
-    c3.warning(f"MDI: {results['required_mdi']:.2f} g")
-
-    st.write(f"Estimated Foam Thickening Time: {results['thickening_time_sec']} sec")
-
-    # Save results
-    if st.checkbox("Save results to CSV"):
-        if not os.path.exists("data"):
-            os.makedirs("data")
-        df = pd.DataFrame([results])
-        file_path = "data/results.csv"
-        if os.path.exists(file_path):
-            df.to_csv(file_path, mode="a", index=False, header=False)
-        else:
-            df.to_csv(file_path, index=False)
-        st.success(f"Results saved to `{file_path}`")
-
-st.markdown("---")
+    st.session_state['results'] = results  # store results to use in right panel
+    st.success("Foam calculation completed!")
 
 # --- 3D STL Visualization & Color-coded Foam Fill ---
-st.header("3D Foam Flow Analysis")
+st.header("3D Foam Flow Analysis with Results Panel")
 uploaded_file = st.file_uploader("Upload STL file of cavity", type=["stl"])
 
 if uploaded_file:
@@ -86,73 +61,92 @@ if uploaded_file:
     vertices = mesh.vertices.copy()
     faces = mesh.faces
 
-    # Base cavity mesh
-    cavity_mesh = go.Mesh3d(
-        x=vertices[:,0], y=vertices[:,1], z=vertices[:,2],
-        i=faces[:,0], j=faces[:,1], k=faces[:,2],
-        color='lightblue', opacity=0.3, flatshading=True
-    )
+    # Two columns: animation left, results right
+    col1, col2 = st.columns([2, 1])
 
-    # Random variation per vertex for uneven fill
-    np.random.seed(42)
-    variation = np.random.uniform(0.85, 1.0, size=vertices.shape[0])
-
-    steps = st.slider("Animation Steps", 5, 50, 20)
-    z_min, z_max = vertices[:,2].min(), vertices[:,2].max()
-    frames = []
-
-    for step in range(steps + 1):
-        progress = step / steps
-        fill_heights = z_min + (z_max - z_min) * progress * variation
-        foam_vertices = vertices.copy()
-        foam_vertices[:,2] = np.minimum(vertices[:,2], fill_heights)
-
-        # Compute fill fraction per vertex for color map
-        fill_fraction = np.clip((foam_vertices[:,2] - z_min) / (z_max - z_min), 0, 1)
-
-        # Map fill fraction to color: red -> yellow -> green
-        colors = ["rgb({}, {}, 0)".format(int(255*(1-f)), int(255*f)) for f in fill_fraction]
-
-        foam_mesh = go.Mesh3d(
-            x=foam_vertices[:,0],
-            y=foam_vertices[:,1],
-            z=foam_vertices[:,2],
-            i=faces[:,0],
-            j=faces[:,1],
-            k=faces[:,2],
-            vertexcolor=colors,
-            flatshading=True,
-            opacity=0.9
+    with col1:
+        # Base cavity mesh
+        cavity_mesh = go.Mesh3d(
+            x=vertices[:,0], y=vertices[:,1], z=vertices[:,2],
+            i=faces[:,0], j=faces[:,1], k=faces[:,2],
+            color='lightblue', opacity=0.3, flatshading=True
         )
 
-        frames.append(go.Frame(data=[cavity_mesh, foam_mesh], name=str(step)))
+        # Random variation per vertex for uneven fill
+        np.random.seed(42)
+        variation = np.random.uniform(0.85, 1.0, size=vertices.shape[0])
 
-    # Initial figure
-    fig = go.Figure(
-        data=[cavity_mesh, frames[0].data[1]],
-        layout=go.Layout(
-            scene=dict(aspectmode='data'),
-            coloraxis=dict(colorscale='RdYlGn', cmin=0, cmax=1, colorbar=dict(title="Fill %")),
-            updatemenus=[dict(type="buttons",
-                              showactive=False,
-                              y=1,
-                              x=1.15,
-                              xanchor="right",
-                              yanchor="top",
-                              buttons=[dict(label="Play",
-                                            method="animate",
-                                            args=[None, {"frame": {"duration": 200, "redraw": True},
-                                                         "fromcurrent": True, "transition": {"duration": 0}}]),
-                                       dict(label="Pause",
-                                            method="animate",
-                                            args=[[None], {"frame": {"duration": 0, "redraw": False},
-                                                           "mode": "immediate",
-                                                           "transition": {"duration": 0}}])
-                                       ])]
-        ),
-        frames=frames
-    )
+        steps = st.slider("Animation Steps", 5, 50, 20, key="animation_steps")
+        z_min, z_max = vertices[:,2].min(), vertices[:,2].max()
+        frames = []
 
-    st.plotly_chart(fig, use_container_width=True)
+        for step in range(steps + 1):
+            progress = step / steps
+            fill_heights = z_min + (z_max - z_min) * progress * variation
+            foam_vertices = vertices.copy()
+            foam_vertices[:,2] = np.minimum(vertices[:,2], fill_heights)
+
+            # Compute fill fraction per vertex for color map
+            fill_fraction = np.clip((foam_vertices[:,2] - z_min) / (z_max - z_min), 0, 1)
+
+            # Map fill fraction to color: red -> yellow -> green
+            colors = ["rgb({}, {}, 0)".format(int(255*(1-f)), int(255*f)) for f in fill_fraction]
+
+            foam_mesh = go.Mesh3d(
+                x=foam_vertices[:,0],
+                y=foam_vertices[:,1],
+                z=foam_vertices[:,2],
+                i=faces[:,0],
+                j=faces[:,1],
+                k=faces[:,2],
+                vertexcolor=colors,
+                flatshading=True,
+                opacity=0.9
+            )
+
+            frames.append(go.Frame(data=[cavity_mesh, foam_mesh], name=str(step)))
+
+        # Initial figure
+        fig = go.Figure(
+            data=[cavity_mesh, frames[0].data[1]],
+            layout=go.Layout(
+                scene=dict(aspectmode='data'),
+                updatemenus=[dict(type="buttons",
+                                  showactive=False,
+                                  y=1,
+                                  x=1.15,
+                                  xanchor="right",
+                                  yanchor="top",
+                                  buttons=[dict(label="Play",
+                                                method="animate",
+                                                args=[None, {"frame": {"duration": 200, "redraw": True},
+                                                             "fromcurrent": True, "transition": {"duration": 0}}]),
+                                           dict(label="Pause",
+                                                method="animate",
+                                                args=[[None], {"frame": {"duration": 0, "redraw": False},
+                                                               "mode": "immediate",
+                                                               "transition": {"duration": 0}}])
+                                           ])]
+            ),
+            frames=frames
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+
+    with col2:
+        st.subheader("Foam Calculation Results")
+        if 'results' in st.session_state:
+            results = st.session_state['results']
+            st.metric("Foam Volume (cm³)", f"{results['volume_cm3']:.2f}")
+            st.metric("Total Mass (g)", f"{results['total_mass_g']:.2f}")
+            st.metric("Target Density (kg/m³)", f"{results['target_density']:.2f}")
+
+            st.write("### Material Breakdown")
+            st.write(f"- Polyol: {results['required_polyol']:.2f} g")
+            st.write(f"- c-Pentane: {results['required_c_pentane']:.2f} g")
+            st.write(f"- MDI: {results['required_mdi']:.2f} g")
+            st.write(f"- Estimated Thickening Time: {results['thickening_time_sec']} sec")
+        else:
+            st.info("Calculate foam first to see results here.")
 
 st.markdown("<p style='text-align:center; color:gray;'>Developed by Mohan Kumar</p>", unsafe_allow_html=True)
