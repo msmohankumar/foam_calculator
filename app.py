@@ -1,5 +1,4 @@
 import streamlit as st
-import pandas as pd
 import numpy as np
 import trimesh
 import plotly.graph_objects as go
@@ -18,7 +17,6 @@ st.markdown("---")
 # --- Foam Parameters ---
 st.header("Foam Dimensions & Material Ratios")
 col1, col2 = st.columns(2)
-
 with col1:
     st.subheader("Foam Dimensions")
     foam_size = st.selectbox("Select foam size (cm)",
@@ -48,7 +46,7 @@ if st.button("Calculate Foam Requirements"):
                                           target_density, polyol_weight,
                                           c_pentane_weight, mdi_weight,
                                           polyol_mix_weight)
-    st.session_state['results'] = results  # store results to use below
+    st.session_state['results'] = results
     st.success("Foam calculation completed!")
 
 # --- Foam Calculation Panel (on top) ---
@@ -65,22 +63,6 @@ if 'results' in st.session_state:
     st.write(f"- c-Pentane: {results['required_c_pentane']:.2f} g")
     st.write(f"- MDI: {results['required_mdi']:.2f} g")
     st.write(f"- Estimated Thickening Time: {results['thickening_time_sec']} sec")
-
-    # Color-coded legend
-    st.write("### Foam Fill Color Scale")
-    st.write("Red = underfilled, Yellow = medium, Green = fully filled")
-    fill_min = 0.0
-    fill_max = 1.0
-    color_scale_fig = go.Figure(
-        go.Heatmap(
-            z=[[fill_min, fill_max]],
-            colorscale='RdYlGn',
-            showscale=True,
-            colorbar=dict(title="Fill Fraction", tickvals=[0,0.25,0.5,0.75,1])
-        )
-    )
-    color_scale_fig.update_layout(height=200, margin=dict(l=0,r=0,t=20,b=20))
-    st.plotly_chart(color_scale_fig, use_container_width=True)
 else:
     st.info("Calculate foam first to see results here.")
 
@@ -95,70 +77,87 @@ if uploaded_file:
     vertices = mesh.vertices.copy()
     faces = mesh.faces
 
-    # Base cavity mesh
-    cavity_mesh = go.Mesh3d(
-        x=vertices[:,0], y=vertices[:,1], z=vertices[:,2],
-        i=faces[:,0], j=faces[:,1], k=faces[:,2],
-        color='lightblue', opacity=0.3, flatshading=True
-    )
+    # --- Two columns: left = 3D animation, right = color scale ---
+    col1, col2 = st.columns([3, 1])
 
-    # Random variation per vertex for uneven fill
-    np.random.seed(42)
-    variation = np.random.uniform(0.85, 1.0, size=vertices.shape[0])
-
-    steps = st.slider("Animation Steps", 5, 50, 20, key="animation_steps")
-    z_min, z_max = vertices[:,2].min(), vertices[:,2].max()
-    frames = []
-
-    for step in range(steps + 1):
-        progress = step / steps
-        fill_heights = z_min + (z_max - z_min) * progress * variation
-        foam_vertices = vertices.copy()
-        foam_vertices[:,2] = np.minimum(vertices[:,2], fill_heights)
-
-        # Compute fill fraction per vertex for color map
-        fill_fraction = np.clip((foam_vertices[:,2] - z_min) / (z_max - z_min), 0, 1)
-        colors = ["rgb({}, {}, 0)".format(int(255*(1-f)), int(255*f)) for f in fill_fraction]
-
-        foam_mesh = go.Mesh3d(
-            x=foam_vertices[:,0],
-            y=foam_vertices[:,1],
-            z=foam_vertices[:,2],
-            i=faces[:,0],
-            j=faces[:,1],
-            k=faces[:,2],
-            vertexcolor=colors,
-            flatshading=True,
-            opacity=0.9
+    with col1:
+        # Base cavity mesh
+        cavity_mesh = go.Mesh3d(
+            x=vertices[:,0], y=vertices[:,1], z=vertices[:,2],
+            i=faces[:,0], j=faces[:,1], k=faces[:,2],
+            color='lightblue', opacity=0.3, flatshading=True
         )
 
-        frames.append(go.Frame(data=[cavity_mesh, foam_mesh], name=str(step)))
+        # Random variation per vertex for uneven fill
+        np.random.seed(42)
+        variation = np.random.uniform(0.85, 1.0, size=vertices.shape[0])
 
-    # Initial figure
-    fig = go.Figure(
-        data=[cavity_mesh, frames[0].data[1]],
-        layout=go.Layout(
-            scene=dict(aspectmode='data'),
-            updatemenus=[dict(type="buttons",
-                              showactive=False,
-                              y=1,
-                              x=1.15,
-                              xanchor="right",
-                              yanchor="top",
-                              buttons=[dict(label="Play",
-                                            method="animate",
-                                            args=[None, {"frame": {"duration": 200, "redraw": True},
-                                                         "fromcurrent": True, "transition": {"duration": 0}}]),
-                                       dict(label="Pause",
-                                            method="animate",
-                                            args=[[None], {"frame": {"duration": 0, "redraw": False},
-                                                           "mode": "immediate",
-                                                           "transition": {"duration": 0}}])
-                                       ])]
-        ),
-        frames=frames
-    )
+        steps = st.slider("Animation Steps", 5, 50, 20, key="animation_steps")
+        z_min, z_max = vertices[:,2].min(), vertices[:,2].max()
+        frames = []
 
-    st.plotly_chart(fig, use_container_width=True)
+        for step in range(steps + 1):
+            progress = step / steps
+            fill_heights = z_min + (z_max - z_min) * progress * variation
+            foam_vertices = vertices.copy()
+            foam_vertices[:,2] = np.minimum(vertices[:,2], fill_heights)
+
+            fill_fraction = np.clip((foam_vertices[:,2] - z_min) / (z_max - z_min), 0, 1)
+            colors = ["rgb({}, {}, 0)".format(int(255*(1-f)), int(255*f)) for f in fill_fraction]
+
+            foam_mesh = go.Mesh3d(
+                x=foam_vertices[:,0],
+                y=foam_vertices[:,1],
+                z=foam_vertices[:,2],
+                i=faces[:,0],
+                j=faces[:,1],
+                k=faces[:,2],
+                vertexcolor=colors,
+                flatshading=True,
+                opacity=0.9
+            )
+            frames.append(go.Frame(data=[cavity_mesh, foam_mesh], name=str(step)))
+
+        fig = go.Figure(
+            data=[cavity_mesh, frames[0].data[1]],
+            layout=go.Layout(
+                scene=dict(aspectmode='data'),
+                updatemenus=[dict(type="buttons",
+                                  showactive=False,
+                                  y=1,
+                                  x=1.15,
+                                  xanchor="right",
+                                  yanchor="top",
+                                  buttons=[dict(label="Play",
+                                                method="animate",
+                                                args=[None, {"frame": {"duration": 200, "redraw": True},
+                                                             "fromcurrent": True, "transition": {"duration": 0}}]),
+                                           dict(label="Pause",
+                                                method="animate",
+                                                args=[[None], {"frame": {"duration": 0, "redraw": False},
+                                                               "mode": "immediate",
+                                                               "transition": {"duration": 0}}])
+                                           ])]
+            ),
+            frames=frames
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+    # --- Right column: Foam Fill Color Scale Legend ---
+    with col2:
+        st.subheader("Foam Fill Color Scale")
+        st.write("Red = underfilled, Yellow = medium, Green = fully filled")
+        fill_min = 0.0
+        fill_max = 1.0
+        color_scale_fig = go.Figure(
+            go.Heatmap(
+                z=[[fill_min, fill_max]],
+                colorscale='RdYlGn',
+                showscale=True,
+                colorbar=dict(title="Fill Fraction", tickvals=[0,0.25,0.5,0.75,1])
+            )
+        )
+        color_scale_fig.update_layout(height=400, margin=dict(l=0,r=0,t=20,b=20))
+        st.plotly_chart(color_scale_fig, use_container_width=True)
 
 st.markdown("<p style='text-align:center; color:gray;'>Developed by Mohan Kumar</p>", unsafe_allow_html=True)
