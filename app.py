@@ -77,7 +77,7 @@ if st.button("Calculate Foam Requirements"):
 
 st.markdown("---")
 
-# --- 3D STL Visualization & Foam Fill Simulation ---
+# --- 3D STL Visualization & Bottom-to-Top Foam Fill ---
 st.header("3D Foam Flow Visualization")
 uploaded_file = st.file_uploader("Upload STL file of cavity", type=["stl"])
 
@@ -86,33 +86,41 @@ if uploaded_file:
     st.write("### 3D Model of Cavity")
     
     # Extract vertices and faces
-    x, y, z = mesh.vertices.T
-    i, j, k = mesh.faces.T
+    vertices = mesh.vertices.copy()
+    faces = mesh.faces
 
-    # Plotly mesh
+    # Plotly initial mesh
     fig = go.Figure(data=[go.Mesh3d(
-        x=x, y=y, z=z,
-        i=i, j=j, k=k,
-        color='lightblue',
-        opacity=0.3,
-        flatshading=True
+        x=vertices[:,0], y=vertices[:,1], z=vertices[:,2],
+        i=faces[:,0], j=faces[:,1], k=faces[:,2],
+        color='lightblue', opacity=0.3, flatshading=True
     )])
     fig.update_layout(scene=dict(aspectmode='data'))
     st.plotly_chart(fig, use_container_width=True)
 
-    st.write("### Foam Expansion Simulation")
+    # Bottom-to-top foam fill simulation
+    st.write("### Foam Expansion Simulation (Bottom-to-Top)")
     steps = st.slider("Animation Steps", 2, 20, 10)
     
-    for factor in np.linspace(0.1, 1.0, steps):
-        scaled_vertices = mesh.vertices * np.array([1,1,factor])
+    z_min, z_max = vertices[:,2].min(), vertices[:,2].max()
+    
+    for step in range(1, steps+1):
+        fill_height = z_min + (z_max - z_min) * (step / steps)
+        
+        # Scale vertices: only fill below fill_height
+        scaled_vertices = vertices.copy()
+        scaled_vertices[:,2] = np.where(scaled_vertices[:,2] <= fill_height,
+                                        scaled_vertices[:,2],
+                                        z_min + (scaled_vertices[:,2]-z_min)*(step/steps))
+        
         fig2 = go.Figure(data=[go.Mesh3d(
             x=scaled_vertices[:,0],
             y=scaled_vertices[:,1],
             z=scaled_vertices[:,2],
-            i=i, j=j, k=k,
-            color='orange',
-            opacity=0.6,
-            flatshading=True
+            i=faces[:,0], j=faces[:,1], k=faces[:,2],
+            color='orange', opacity=0.6, flatshading=True
         )])
         fig2.update_layout(scene=dict(aspectmode='data'))
         st.plotly_chart(fig2, use_container_width=True)
+
+st.markdown("<p style='text-align:center; color:gray;'>Developed by Mohan Kumar</p>", unsafe_allow_html=True)
