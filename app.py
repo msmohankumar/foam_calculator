@@ -1,9 +1,10 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
+import trimesh
+import plotly.graph_objects as go
 import os
 from utils.calculations import calculate_foam_requirements
-import vedo
-from vedo import Mesh, Plotter
 
 # --- Page config ---
 st.set_page_config(page_title="PU Foam Calculator", layout="wide", page_icon="🧪")
@@ -11,9 +12,8 @@ st.set_page_config(page_title="PU Foam Calculator", layout="wide", page_icon="�
 # --- Header ---
 st.markdown("""
 <h1 style='text-align: center; color: #2E86C1;'>PU Foam Shot Calculator 🧪</h1>
-<p style='text-align: center;'>Calculate required masses and visualize foam filling in a 3D cavity.</p>
+<p style='text-align: center;'>Calculate foam requirements and visualize foam filling in a 3D cavity.</p>
 """, unsafe_allow_html=True)
-
 st.markdown("---")
 
 # --- Foam Parameters ---
@@ -77,23 +77,42 @@ if st.button("Calculate Foam Requirements"):
 
 st.markdown("---")
 
-# --- 3D STL Visualization ---
+# --- 3D STL Visualization & Foam Fill Simulation ---
 st.header("3D Foam Flow Visualization")
 uploaded_file = st.file_uploader("Upload STL file of cavity", type=["stl"])
 
 if uploaded_file:
-    mesh = Mesh(uploaded_file)
+    mesh = trimesh.load_mesh(uploaded_file)
     st.write("### 3D Model of Cavity")
     
-    vp = Plotter(offscreen=True)
-    vp.show(mesh, axes=1)
-    st.image(vp.screenshot(returnImg=True))
+    # Extract vertices and faces
+    x, y, z = mesh.vertices.T
+    i, j, k = mesh.faces.T
+
+    # Plotly mesh
+    fig = go.Figure(data=[go.Mesh3d(
+        x=x, y=y, z=z,
+        i=i, j=j, k=k,
+        color='lightblue',
+        opacity=0.3,
+        flatshading=True
+    )])
+    fig.update_layout(scene=dict(aspectmode='data'))
+    st.plotly_chart(fig, use_container_width=True)
 
     st.write("### Foam Expansion Simulation")
     steps = st.slider("Animation Steps", 2, 20, 10)
-    for factor in range(1, steps+1):
-        animated_mesh = mesh.clone().scale([1,1,factor/steps])
-        vp.show(animated_mesh, resetcam=False)
-        st.image(vp.screenshot(returnImg=True))
-
-st.markdown("<p style='text-align:center; color:gray;'>Developed by Mohan Kumar</p>", unsafe_allow_html=True)
+    
+    for factor in np.linspace(0.1, 1.0, steps):
+        scaled_vertices = mesh.vertices * np.array([1,1,factor])
+        fig2 = go.Figure(data=[go.Mesh3d(
+            x=scaled_vertices[:,0],
+            y=scaled_vertices[:,1],
+            z=scaled_vertices[:,2],
+            i=i, j=j, k=k,
+            color='orange',
+            opacity=0.6,
+            flatshading=True
+        )])
+        fig2.update_layout(scene=dict(aspectmode='data'))
+        st.plotly_chart(fig2, use_container_width=True)
