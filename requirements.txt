@@ -1,3 +1,5 @@
 streamlit>=1.26.0
 pandas>=2.1.0
-vedo>=2023.7.1
+trimesh>=3.22.1
+plotly>=5.20.0
+numpy>=1.26.0
