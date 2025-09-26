@@ -77,44 +77,38 @@ if st.button("Calculate Foam Requirements"):
 
 st.markdown("---")
 
-# --- 3D STL Visualization & Bottom-to-Top Foam Fill ---
+# --- 3D STL Visualization & Smooth Bottom-to-Top Foam Fill ---
 st.header("3D Foam Flow Visualization")
 uploaded_file = st.file_uploader("Upload STL file of cavity", type=["stl"])
 
 if uploaded_file:
-    # Load STL correctly by specifying file_type
+    # Load STL
     mesh = trimesh.load_mesh(file_obj=uploaded_file, file_type='stl')
-    st.write("### 3D Model of Cavity")
-    
     vertices = mesh.vertices.copy()
     faces = mesh.faces
 
-    # Initial mesh
-    fig = go.Figure(data=[go.Mesh3d(
+    # Base cavity mesh
+    cavity_mesh = go.Mesh3d(
         x=vertices[:,0], y=vertices[:,1], z=vertices[:,2],
         i=faces[:,0], j=faces[:,1], k=faces[:,2],
         color='lightblue', opacity=0.3, flatshading=True
-    )])
-    fig.update_layout(scene=dict(aspectmode='data'))
-    st.plotly_chart(fig, use_container_width=True)
+    )
 
-    # Bottom-to-top foam fill simulation using frames
-    st.write("### Foam Expansion Simulation (Bottom-to-Top)")
+    # Create foam frames
     steps = st.slider("Animation Steps", 5, 50, 20)
-    
     z_min, z_max = vertices[:,2].min(), vertices[:,2].max()
     frames = []
 
-    for step in range(1, steps+1):
+    for step in range(steps + 1):
         fill_height = z_min + (z_max - z_min) * (step / steps)
-        scaled_vertices = vertices.copy()
-        scaled_vertices[:,2] = np.where(scaled_vertices[:,2] <= fill_height,
-                                        scaled_vertices[:,2],
-                                        fill_height)
-        frame = go.Mesh3d(
-            x=scaled_vertices[:,0],
-            y=scaled_vertices[:,1],
-            z=scaled_vertices[:,2],
+        foam_vertices = vertices.copy()
+        foam_vertices[:,2] = np.where(foam_vertices[:,2] <= fill_height,
+                                      foam_vertices[:,2],
+                                      fill_height)
+        foam_mesh = go.Mesh3d(
+            x=foam_vertices[:,0],
+            y=foam_vertices[:,1],
+            z=foam_vertices[:,2],
             i=faces[:,0],
             j=faces[:,1],
             k=faces[:,2],
@@ -122,12 +116,33 @@ if uploaded_file:
             opacity=0.6,
             flatshading=True
         )
-        frames.append(frame)
+        frames.append(go.Frame(data=[cavity_mesh, foam_mesh], name=str(step)))
 
-    # Display frames sequentially
-    for f in frames:
-        fig2 = go.Figure(data=[f])
-        fig2.update_layout(scene=dict(aspectmode='data'))
-        st.plotly_chart(fig2, use_container_width=True)
+    # Initial figure
+    fig = go.Figure(
+        data=[cavity_mesh, frames[0].data[1]],
+        layout=go.Layout(
+            scene=dict(aspectmode='data'),
+            updatemenus=[dict(type="buttons",
+                              showactive=False,
+                              y=1,
+                              x=1.15,
+                              xanchor="right",
+                              yanchor="top",
+                              buttons=[dict(label="Play",
+                                            method="animate",
+                                            args=[None, {"frame": {"duration": 200, "redraw": True},
+                                                         "fromcurrent": True, "transition": {"duration": 0}}]),
+                                       dict(label="Pause",
+                                            method="animate",
+                                            args=[[None], {"frame": {"duration": 0, "redraw": False},
+                                                           "mode": "immediate",
+                                                           "transition": {"duration": 0}}])
+                                       ])]
+        ),
+        frames=frames
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
 
 st.markdown("<p style='text-align:center; color:gray;'>Developed by Mohan Kumar</p>", unsafe_allow_html=True)
