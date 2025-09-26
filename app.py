@@ -3,7 +3,6 @@ import pandas as pd
 import numpy as np
 import trimesh
 import plotly.graph_objects as go
-import os
 from utils.calculations import calculate_foam_requirements
 
 # --- Page config ---
@@ -88,8 +87,6 @@ if uploaded_file:
 
             # Compute fill fraction per vertex for color map
             fill_fraction = np.clip((foam_vertices[:,2] - z_min) / (z_max - z_min), 0, 1)
-
-            # Map fill fraction to color: red -> yellow -> green
             colors = ["rgb({}, {}, 0)".format(int(255*(1-f)), int(255*f)) for f in fill_fraction]
 
             foam_mesh = go.Mesh3d(
@@ -134,9 +131,11 @@ if uploaded_file:
         st.plotly_chart(fig, use_container_width=True)
 
     with col2:
-        st.subheader("Foam Calculation Results")
+        st.subheader("Foam Calculation & Fill Analysis")
         if 'results' in st.session_state:
             results = st.session_state['results']
+
+            # Foam calculation metrics
             st.metric("Foam Volume (cm³)", f"{results['volume_cm3']:.2f}")
             st.metric("Total Mass (g)", f"{results['total_mass_g']:.2f}")
             st.metric("Target Density (kg/m³)", f"{results['target_density']:.2f}")
@@ -146,6 +145,24 @@ if uploaded_file:
             st.write(f"- c-Pentane: {results['required_c_pentane']:.2f} g")
             st.write(f"- MDI: {results['required_mdi']:.2f} g")
             st.write(f"- Estimated Thickening Time: {results['thickening_time_sec']} sec")
+
+            # Color-coded legend similar to FEA software
+            st.write("### Foam Fill Color Scale")
+            st.write("Red = underfilled, Yellow = medium, Green = fully filled")
+            fill_min = 0.0
+            fill_max = 1.0
+
+            # Render color scale using Plotly
+            color_scale_fig = go.Figure(
+                go.Heatmap(
+                    z=[[fill_min, fill_max]],
+                    colorscale='RdYlGn',
+                    showscale=True,
+                    colorbar=dict(title="Fill Fraction", tickvals=[0,0.25,0.5,0.75,1])
+                )
+            )
+            color_scale_fig.update_layout(height=200, margin=dict(l=0,r=0,t=20,b=20))
+            st.plotly_chart(color_scale_fig, use_container_width=True)
         else:
             st.info("Calculate foam first to see results here.")
 
