@@ -77,12 +77,11 @@ if st.button("Calculate Foam Requirements"):
 
 st.markdown("---")
 
-# --- 3D STL Visualization & Smooth Bottom-to-Top Foam Fill ---
+# --- 3D STL Visualization & Non-uniform Foam Fill ---
 st.header("3D Foam Flow Visualization")
 uploaded_file = st.file_uploader("Upload STL file of cavity", type=["stl"])
 
 if uploaded_file:
-    # Load STL
     mesh = trimesh.load_mesh(file_obj=uploaded_file, file_type='stl')
     vertices = mesh.vertices.copy()
     faces = mesh.faces
@@ -94,17 +93,22 @@ if uploaded_file:
         color='lightblue', opacity=0.3, flatshading=True
     )
 
-    # Create foam frames
+    # Random variation per vertex to simulate uneven fill
+    np.random.seed(42)
+    variation = np.random.uniform(0.85, 1.0, size=vertices.shape[0])
+
     steps = st.slider("Animation Steps", 5, 50, 20)
     z_min, z_max = vertices[:,2].min(), vertices[:,2].max()
     frames = []
 
     for step in range(steps + 1):
-        fill_height = z_min + (z_max - z_min) * (step / steps)
+        progress = step / steps
+        fill_heights = z_min + (z_max - z_min) * progress * variation
         foam_vertices = vertices.copy()
-        foam_vertices[:,2] = np.where(foam_vertices[:,2] <= fill_height,
-                                      foam_vertices[:,2],
-                                      fill_height)
+        foam_vertices[:,2] = np.minimum(vertices[:,2], fill_heights)
+
+        # Color gradient: lighter at bottom, darker at top
+        foam_color = np.clip(progress + (foam_vertices[:,2]-z_min)/(z_max-z_min)*0.4, 0, 1)
         foam_mesh = go.Mesh3d(
             x=foam_vertices[:,0],
             y=foam_vertices[:,1],
@@ -113,7 +117,7 @@ if uploaded_file:
             j=faces[:,1],
             k=faces[:,2],
             color='orange',
-            opacity=0.6,
+            opacity=foam_color[0]*0.8 + 0.2,  # opacity gradient
             flatshading=True
         )
         frames.append(go.Frame(data=[cavity_mesh, foam_mesh], name=str(step)))
