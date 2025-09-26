@@ -12,7 +12,7 @@ st.set_page_config(page_title="PU Foam Calculator", layout="wide", page_icon="ðŸ
 # --- Header ---
 st.markdown("""
 <h1 style='text-align: center; color: #2E86C1;'>PU Foam Shot Calculator ðŸ§ª</h1>
-<p style='text-align: center;'>Calculate foam requirements and visualize foam filling in a 3D cavity.</p>
+<p style='text-align: center;'>Calculate foam requirements and visualize foam filling in a 3D cavity with analysis.</p>
 """, unsafe_allow_html=True)
 st.markdown("---")
 
@@ -77,8 +77,8 @@ if st.button("Calculate Foam Requirements"):
 
 st.markdown("---")
 
-# --- 3D STL Visualization & Non-uniform Foam Fill ---
-st.header("3D Foam Flow Visualization")
+# --- 3D STL Visualization & Color-coded Foam Fill ---
+st.header("3D Foam Flow Analysis")
 uploaded_file = st.file_uploader("Upload STL file of cavity", type=["stl"])
 
 if uploaded_file:
@@ -93,7 +93,7 @@ if uploaded_file:
         color='lightblue', opacity=0.3, flatshading=True
     )
 
-    # Random variation per vertex to simulate uneven fill
+    # Random variation per vertex for uneven fill
     np.random.seed(42)
     variation = np.random.uniform(0.85, 1.0, size=vertices.shape[0])
 
@@ -107,8 +107,12 @@ if uploaded_file:
         foam_vertices = vertices.copy()
         foam_vertices[:,2] = np.minimum(vertices[:,2], fill_heights)
 
-        # Color gradient: lighter at bottom, darker at top
-        foam_color = np.clip(progress + (foam_vertices[:,2]-z_min)/(z_max-z_min)*0.4, 0, 1)
+        # Compute fill fraction per vertex for color map
+        fill_fraction = np.clip((foam_vertices[:,2] - z_min) / (z_max - z_min), 0, 1)
+
+        # Map fill fraction to color: red -> yellow -> green
+        colors = ["rgb({}, {}, 0)".format(int(255*(1-f)), int(255*f)) for f in fill_fraction]
+
         foam_mesh = go.Mesh3d(
             x=foam_vertices[:,0],
             y=foam_vertices[:,1],
@@ -116,10 +120,11 @@ if uploaded_file:
             i=faces[:,0],
             j=faces[:,1],
             k=faces[:,2],
-            color='orange',
-            opacity=foam_color[0]*0.8 + 0.2,  # opacity gradient
-            flatshading=True
+            vertexcolor=colors,
+            flatshading=True,
+            opacity=0.9
         )
+
         frames.append(go.Frame(data=[cavity_mesh, foam_mesh], name=str(step)))
 
     # Initial figure
@@ -127,6 +132,7 @@ if uploaded_file:
         data=[cavity_mesh, frames[0].data[1]],
         layout=go.Layout(
             scene=dict(aspectmode='data'),
+            coloraxis=dict(colorscale='RdYlGn', cmin=0, cmax=1, colorbar=dict(title="Fill %")),
             updatemenus=[dict(type="buttons",
                               showactive=False,
                               y=1,
